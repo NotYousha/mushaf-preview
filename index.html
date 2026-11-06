@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <!-- Both, now that every theme has a dark palette. The active one is
+         pinned per theme in themes.css, so form controls and scrollbars
+         follow the palette rather than the browser's guess. Leaving this at
+         `light only` forced light chrome over a black Kiswah page. -->
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f0e6" />
+    <!--
+      Standalone on iOS. vite-plugin-pwa injects the manifest but not these,
+      and without the first one an older iPhone opens an "installed" app as a
+      plain Safari tab.
+
+      The bar style is `default` on purpose. The alternatives put content
+      under the status bar with light text, which is unreadable on the cream
+      and parchment themes — and the style is fixed at launch, so it cannot
+      follow the theme the way `theme-color` does. Letting iOS reserve the bar
+      and pick readable text is the only option that is right for all seven.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!--
+      Everything this page may talk to, enforced by the browser rather than
+      promised in a policy document. Audio is the only outside origin, and it
+      is our own proxy. There is no analytics, ad, or font vendor to allow —
+      which is why this policy can be written at all.
+
+      The hash in script-src is the theme boot script further down, admitted by
+      its exact text. 'unsafe-inline' would have admitted it too, and every
+      injected script along with it; a hash gives up nothing.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src 'self' 'sha256-4Vfi22ecJq6jR1mn46Yu7RTqQ8Z9wJgNsGXJNMg/uKc=';
+               style-src 'self' 'unsafe-inline';
+               font-src 'self';
+               img-src 'self' data: blob:;
+               media-src 'self' blob: https://mushaf-audio.mushaftarteel.workers.dev https://archive.org https://*.archive.org https://download.quranicaudio.com https://server8.mp3quran.net https://cdn.mp3quran.net;
+               connect-src 'self' https://mushaf-audio.mushaftarteel.workers.dev https://archive.org https://*.archive.org https://download.quranicaudio.com https://server8.mp3quran.net https://cdn.mp3quran.net;
+               worker-src 'self';
+               manifest-src 'self';
+               object-src 'none';
+               base-uri 'none';
+               form-action 'none'"
+    />
+    <link rel="stylesheet" href="/Program Files/Git/mushaf-preview/fonts/fonts.css" />
+    <!--
+      Absolute, so the base is prepended at build time. A document-relative
+      "./" resolves against whatever URL the page was opened at, and on the one
+      that lacks a trailing slash it would point a level too high — iOS finding
+      no apple-touch-icon falls back to a screenshot of the page, which is how
+      an "icon" ends up being a picture of cream paper.
+
+      180 is iOS's own size for this, so the mark is drawn rather than scaled.
+    -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/Program Files/Git/mushaf-preview/mark-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/Program Files/Git/mushaf-preview/mark-180.png" />
+    <!--
+      The faces the app opens on, asked for before the app can ask.
+
+      These are background-images on the home grid, so nothing requests them
+      until React has mounted and painted that grid, by which time the
+      connection is already spoken for by the mushaf layout chunk, the Arabic
+      fonts and the 229KB page behind the resume card. At 10Mbps that put the
+      last portrait at 1.1s and drew the grid as a row of empty circles until
+      then; asked for here they are decoded by 0.46s, before the grid that
+      wants them exists.
+
+      Bought, not free: 175KB shares the pipe with the main bundle, so first
+      paint moves back 124ms at 10Mbps and 730ms on a 1.6Mbps link. Worth it
+      only because first paint here is the splash, which holds for 1650ms
+      afterwards anyway — so do not extend this to the rest of the roster on
+      the strength of it working for six. The fonts move back with it, and
+      every @font-face here is font-display: swap, so that is a beat of
+      fallback type rather than a line of missing text.
+
+      The list is HOME_RECITERS in src/catalog/home.ts, spelled out again
+      because a <link> cannot import, and it has already grown once. A face
+      added there and not here loses its head start; one left here after being
+      removed there costs a few kilobytes on first launch.
+
+      Absolute, so the base is prepended at build time, same as the icons.
+    -->
+    <link rel="preload" as="image" href="/Program Files/Git/mushaf-preview/sheikh.jpg" />
+    <link rel="preload" as="image" href="/Program Files/Git/mushaf-preview/imam-burhaji.webp" type="image/webp" />
+    <link rel="preload" as="image" href="/Program Files/Git/mushaf-preview/imam-sudais.webp" type="image/webp" />
+    <link rel="preload" as="image" href="/Program Files/Git/mushaf-preview/imam-muaiqly.webp" type="image/webp" />
+    <link rel="preload" as="image" href="/Program Files/Git/mushaf-preview/turki.webp" type="image/webp" />
+    <link rel="preload" as="image" href="/Program Files/Git/mushaf-preview/afasy.webp" type="image/webp" />
+    <!--
+      The theme, stamped before anything is drawn.
+
+      The preference lives in IndexedDB with every other setting, and that
+      cannot be read without awaiting: by the time React has it the page has
+      already painted, so a dark theme would open with a flash of cream on
+      every launch. localStorage is kept as a write-through copy purely so it
+      can be read here, synchronously, in the head.
+
+      Inline rather than a file so it cannot arrive late or fail to arrive at
+      all — a cold service worker on an iPhone serves the first request of a
+      launch slowest, which is exactly the moment this has to be right. The
+      hash in the policy above is what lets it run; tests/themeboot.test.ts
+      recomputes that hash from this text, so editing the script without
+      updating the hash fails the suite rather than quietly restoring the flash
+      in production.
+    -->
+    <script>
+      ;(function () {
+        var THEMES = ['isha', 'mushaf', 'kiswah', 'lapis', 'zellij', 'rawdah', 'vellum', 'tahajjud']
+        // Language to writing direction. Kept here rather than imported for the
+        // same reason the theme list is: this has to run before anything loads.
+        var DIRS = { ar: 'rtl', en: 'ltr', ur: 'rtl', hi: 'ltr', fr: 'ltr' }
+        var theme = 'isha'
+        var mode = 'system'
+        // No stored language yet means a first run, and the phone's own
+        // language is the best guess available — English if it is not one the
+        // app speaks. Arabic stays the default for an Arabic phone. This has
+        // to agree exactly with deviceLang() in src/i18n/index.ts, or the
+        // interface changes direction a moment after mount.
+        var lang = 'en'
+        try {
+          var nav = (navigator.languages && navigator.languages[0]) || navigator.language || ''
+          var base = String(nav).toLowerCase().split('-')[0]
+          if (DIRS[base]) lang = base
+        } catch (e) {
+          /* No navigator.language. 'en' stands. */
+        }
+        try {
+          var t = localStorage.getItem('mushaf:theme')
+          var m = localStorage.getItem('mushaf:mode')
+          var l = localStorage.getItem('mushaf:lang')
+          if (THEMES.indexOf(t) !== -1) theme = t
+          if (m === 'light' || m === 'dark' || m === 'system') mode = m
+          if (DIRS[l]) lang = l
+        } catch (e) {
+          /* Site data blocked, or a private window. Nothing was readable, so
+             the defaults above stand — the same ones the app itself falls back
+             to, so the two cannot disagree and nothing moves after mount. */
+        }
+        if (mode === 'system') {
+          mode = 'light'
+          try {
+            if (window.matchMedia('(prefers-color-scheme: dark)').matches) mode = 'dark'
+          } catch (e) {
+            /* No matchMedia. Light is the safer guess: iOS reserves the status
+               bar with dark text either way, and every theme has a day palette. */
+          }
+        }
+        var root = document.documentElement
+        root.setAttribute('data-theme', theme)
+        root.setAttribute('data-mode', mode)
+        /*
+         * Language and direction, before the first paint.
+         *
+         * Without this the app mounted holding a hardcoded Arabic, so an
+         * English reader got the whole interface right-to-left on every launch
+         * until IndexedDB answered — and the headings changed typeface on the
+         * way, because --font-name is the serif under dir=rtl and the sans
+         * under dir=ltr.
+         */
+        root.setAttribute('lang', lang)
+        root.setAttribute('dir', DIRS[lang])
+      })()
+    </script>
+    <title>الموعظة — Al-Mau'iza</title>
+    <script type="module" crossorigin src="/Program Files/Git/mushaf-preview/assets/index-CigmLYOO.js"></script>
+    <link rel="stylesheet" crossorigin href="/Program Files/Git/mushaf-preview/assets/index-IabfgBiB.css">
+  <link rel="manifest" href="/Program%20Files/Git/mushaf-preview/manifest.webmanifest"></head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
